@@ -2,31 +2,188 @@
 <html lang="uz">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>PayMLBB.ai</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  body {
-    margin: 0;
-    background: #0B1220;
-    color: #F8FAFC;
-    font-family: -apple-system, sans-serif;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    text-align: center;
+  :root {
+    --bg: #0B1220;
+    --surface: #141E30;
+    --border: #1F2937;
+    --text: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+    --accent: #60A5FA;
+    --gradient: linear-gradient(135deg, #3B82F6, #7C3AED);
   }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding-bottom: 84px;
+  }
+  .screen { display: none; padding: 16px; }
+  .screen.active { display: block; }
+
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .user-chip { display:flex; align-items:center; gap:8px; }
+  .avatar { width:34px;height:34px;border-radius:50%;background:var(--gradient);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500; }
+  .lang-btn { background: var(--surface); border:0.5px solid var(--border); border-radius:8px; padding:5px 10px; font-size:12px; color:var(--text); }
+
+  .balance-card { background: linear-gradient(135deg, #1E293B, #0F172A); border-radius:16px; padding:16px; margin-bottom:14px; border:0.5px solid var(--border); }
+  .balance-label { color:var(--text-secondary); font-size:11px; margin-bottom:4px; }
+  .balance-row { display:flex; justify-content:space-between; align-items:center; }
+  .balance-amount { font-size:20px; font-weight:500; }
+  .balance-amount span { font-size:12px; color:var(--accent); }
+  .btn-primary { background: var(--gradient); color:white; border:none; padding:8px 16px; border-radius:10px; font-size:12px; font-weight:500; }
+
+  .menu-label { color:var(--text-muted); font-size:11px; font-weight:500; margin-bottom:8px; letter-spacing:0.5px; }
+  .menu-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+  .menu-item { background:var(--surface); border-radius:12px; padding:14px 10px; text-align:center; border:0.5px solid var(--border); font-size:22px; }
+  .menu-item span { display:block; font-size:12px; margin-top:6px; }
+
+  .ai-promo { background: linear-gradient(135deg, #312E81, #1E1B4B); border-radius:14px; padding:14px; display:flex; align-items:center; gap:10px; }
+  .ai-promo-title { font-size:13px; font-weight:500; }
+  .ai-promo-sub { font-size:11px; color:#C7D2FE; }
+
+  .bottom-nav { position:fixed; bottom:0; left:0; right:0; background:var(--surface); border-top:0.5px solid var(--border); display:flex; justify-content:space-around; padding:10px 4px calc(10px + env(safe-area-inset-bottom)); }
+  .nav-item { display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--text-muted); font-size:9px; background:none; border:none; }
+  .nav-item.active { color:var(--accent); }
+
+  .card { background:var(--surface); border-radius:12px; padding:12px 14px; border:0.5px solid var(--border); margin-bottom:8px; font-size:13px; }
+  h2 { font-weight:500; margin-bottom:16px; }
+
+  .chat-bubble { border-radius:12px; padding:10px 12px; font-size:12px; max-width:85%; margin-bottom:10px; line-height:1.5; }
+  .chat-bot { background:var(--surface); border:0.5px solid var(--border); border-radius:12px 12px 12px 4px; }
+
+  .empty-state { text-align:center; color:var(--text-muted); font-size:12px; padding:20px; }
 </style>
 </head>
 <body>
-  <div>
-    <h1>PayMLBB.ai</h1>
-    <p>Mini App tayyor — endi asosiy sahifani quramiz</p>
+
+<div id="screen-home" class="screen active">
+  <div class="topbar">
+    <div class="user-chip">
+      <div class="avatar" id="home-avatar">--</div>
+      <span id="home-username" style="font-size:13px;font-weight:500;">...</span>
+    </div>
+    <button class="lang-btn" onclick="showScreen('settings')">🇺🇿 UZ</button>
   </div>
-  <script>
-    Telegram.WebApp.ready();
-    Telegram.WebApp.expand();
-  </script>
+
+  <div class="balance-card">
+    <div class="balance-label">Hisobingiz</div>
+    <div class="balance-row">
+      <div class="balance-amount">0 <span>so'm</span></div>
+      <button class="btn-primary" onclick="showScreen('wallet')">To'ldirish</button>
+    </div>
+  </div>
+
+  <div class="menu-label">MENYU</div>
+  <div class="menu-grid">
+    <div class="menu-item" onclick="showScreen('wallet')">💎<span>Donat</span></div>
+    <div class="menu-item" onclick="showScreen('tournament')">🏆<span>Turnirlar</span></div>
+    <div class="menu-item" onclick="showScreen('squad')">👥<span>Jamoa tuzish</span></div>
+    <div class="menu-item" onclick="showScreen('profile')">👤<span>Profilim</span></div>
+  </div>
+
+  <div class="ai-promo" onclick="showScreen('ai')">
+    <div style="font-size:22px;">✨</div>
+    <div>
+      <div class="ai-promo-title">AI Yordamchi</div>
+      <div class="ai-promo-sub">Hero, build, meta bo'yicha so'rang</div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-wallet" class="screen">
+  <h2>Hamyon</h2>
+  <div class="balance-card" style="text-align:center;">
+    <div class="balance-label">Joriy balans</div>
+    <div style="font-size:24px;font-weight:500;margin-bottom:14px;">0 <span style="font-size:13px;color:var(--accent);">so'm</span></div>
+    <button class="btn-primary" style="width:100%;padding:10px;">To'ldirish</button>
+  </div>
+  <div class="menu-label">TO'LOV USULLARI</div>
+  <div class="menu-grid">
+    <div class="menu-item" style="font-size:13px;">Payme</div>
+    <div class="menu-item" style="font-size:13px;">Click</div>
+  </div>
+  <div class="menu-label">TRANZAKSIYALAR</div>
+  <div class="card empty-state">Hali tranzaksiya yo'q</div>
+</div>
+
+<div id="screen-ai" class="screen">
+  <h2>AI Yordamchi</h2>
+  <div class="chat-bubble chat-bot">Salom! Hero, build, counter-pick yoki yangiliklar bo'yicha so'rang.</div>
+  <div style="display:flex;gap:8px;align-items:center;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:8px 10px;margin-top:16px;">
+    <input type="text" placeholder="Savolingizni yozing..." style="flex:1;background:transparent;border:none;color:var(--text);font-size:12px;outline:none;">
+    <span>➤</span>
+  </div>
+  <p class="empty-state">AI hali ulanmagan — 7-bosqichda qo'shiladi</p>
+</div>
+
+<div id="screen-tournament" class="screen">
+  <h2>Turnirlar</h2>
+  <div class="card empty-state">Hali faol turnir yo'q</div>
+</div>
+
+<div id="screen-squad" class="screen">
+  <h2>Jamoa tuzish</h2>
+  <div class="card empty-state">Tez orada</div>
+</div>
+
+<div id="screen-profile" class="screen">
+  <h2>Profilim</h2>
+  <div class="card">🎖 Yutuqlar</div>
+  <div class="card">🏆 Turnir tarixi</div>
+  <div class="card">👥 Jamoa tarixi</div>
+  <div class="card" onclick="showScreen('referral')">🎁 Referal</div>
+  <div class="card" onclick="showScreen('settings')">⚙️ Sozlamalar</div>
+</div>
+
+<div id="screen-referral" class="screen">
+  <h2>Do'st taklif qiling</h2>
+  <div class="card empty-state">Tez orada</div>
+</div>
+
+<div id="screen-settings" class="screen">
+  <h2>Sozlamalar</h2>
+  <div class="card">Til: 🇺🇿 O'zbek</div>
+  <div class="card">Mavzu: Dark</div>
+</div>
+
+<div class="bottom-nav">
+  <button class="nav-item active" id="nav-home" onclick="showScreen('home')">🏠<span>Asosiy</span></button>
+  <button class="nav-item" id="nav-wallet" onclick="showScreen('wallet')">💳<span>Hamyon</span></button>
+  <button class="nav-item" id="nav-ai" onclick="showScreen('ai')">✨<span>AI</span></button>
+  <button class="nav-item" id="nav-tournament" onclick="showScreen('tournament')">🏆<span>Turnir</span></button>
+  <button class="nav-item" id="nav-profile" onclick="showScreen('profile')">👤<span>Profilim</span></button>
+</div>
+
+<script>
+  var tg = window.Telegram ? window.Telegram.WebApp : null;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    var user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+    if (user) {
+      document.getElementById('home-username').textContent = user.first_name || 'Foydalanuvchi';
+      var initials = (user.first_name ? user.first_name[0] : '') + (user.last_name ? user.last_name[0] : '');
+      document.getElementById('home-avatar').textContent = initials.toUpperCase() || 'U';
+    }
+  }
+
+  function showScreen(name) {
+    var screens = document.querySelectorAll('.screen');
+    for (var i = 0; i < screens.length; i++) { screens[i].classList.remove('active'); }
+    document.getElementById('screen-' + name).classList.add('active');
+
+    var navs = document.querySelectorAll('.nav-item');
+    for (var j = 0; j < navs.length; j++) { navs[j].classList.remove('active'); }
+    var navBtn = document.getElementById('nav-' + name);
+    if (navBtn) { navBtn.classList.add('active'); }
+  }
+</script>
+
 </body>
 </html>
