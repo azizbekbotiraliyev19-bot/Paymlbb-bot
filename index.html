@@ -35,7 +35,7 @@
   .balance-label { color:var(--text-secondary); font-size:11px; margin-bottom:4px; }
   .balance-row { display:flex; justify-content:space-between; align-items:center; }
   .balance-amount { font-size:20px; font-weight:500; }
-  .balance-amount span { font-size:12px; color:var(--accent); }
+  .balance-amount .money-unit { font-size:12px; color:var(--accent); }
   .btn-primary { background: var(--gradient); color:white; border:none; padding:8px 16px; border-radius:10px; font-size:12px; font-weight:500; }
 
   .menu-label { color:var(--text-muted); font-size:11px; font-weight:500; margin-bottom:8px; letter-spacing:0.5px; }
@@ -58,6 +58,13 @@
   .chat-bot { background:var(--surface); border:0.5px solid var(--border); border-radius:12px 12px 12px 4px; }
 
   .empty-state { text-align:center; color:var(--text-muted); font-size:12px; padding:20px; }
+
+  .option-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+  .option-btn { background:var(--surface); border-radius:12px; padding:12px 6px; text-align:center; border:0.5px solid var(--border); font-size:18px; color:var(--text); display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .option-btn span { font-size:11px; color:var(--text-secondary); }
+  .option-btn.selected { border-color:var(--accent); background:linear-gradient(135deg, rgba(59,130,246,0.15), rgba(124,58,237,0.15)); }
+  .option-btn.selected span { color:var(--text); }
+  .option-btn .curr-code { font-size:9px; color:var(--text-muted); letter-spacing:0.5px; }
 </style>
 </head>
 <body>
@@ -68,110 +75,323 @@
       <div class="avatar" id="home-avatar">--</div>
       <span id="home-username" style="font-size:13px;font-weight:500;">...</span>
     </div>
-    <button class="lang-btn" onclick="showScreen('settings')">🇺🇿 UZ</button>
+    <button class="lang-btn" id="home-lang-btn" onclick="showScreen('settings')">🇺🇿 UZ</button>
   </div>
 
   <div class="balance-card">
-    <div class="balance-label">Hisobingiz</div>
+    <div class="balance-label" data-i18n="balance_label">Hisobingiz</div>
     <div class="balance-row">
-      <div class="balance-amount">0 <span>so'm</span></div>
-      <button class="btn-primary" onclick="showScreen('wallet')">To'ldirish</button>
+      <div class="balance-amount"><span class="money-value" data-uzs="0">0</span> <span class="money-unit">so'm</span></div>
+      <button class="btn-primary" data-i18n="topup_btn" onclick="showScreen('wallet')">To'ldirish</button>
     </div>
   </div>
 
-  <div class="menu-label">MENYU</div>
+  <div class="menu-label" data-i18n="menu_label">MENYU</div>
   <div class="menu-grid">
-    <div class="menu-item" onclick="showScreen('wallet')">💎<span>Donat</span></div>
-    <div class="menu-item" onclick="showScreen('tournament')">🏆<span>Turnirlar</span></div>
-    <div class="menu-item" onclick="showScreen('squad')">👥<span>Jamoa tuzish</span></div>
-    <div class="menu-item" onclick="showScreen('profile')">👤<span>Profilim</span></div>
+    <div class="menu-item" onclick="showScreen('wallet')">💎<span data-i18n="menu_donate">Donat</span></div>
+    <div class="menu-item" onclick="showScreen('tournament')">🏆<span data-i18n="menu_tournaments">Turnirlar</span></div>
+    <div class="menu-item" onclick="showScreen('squad')">👥<span data-i18n="menu_squad">Jamoa tuzish</span></div>
+    <div class="menu-item" onclick="showScreen('profile')">👤<span data-i18n="menu_profile">Profilim</span></div>
   </div>
 
   <div class="ai-promo" onclick="showScreen('ai')">
     <div style="font-size:22px;">✨</div>
     <div>
-      <div class="ai-promo-title">AI Yordamchi</div>
-      <div class="ai-promo-sub">Hero, build, meta bo'yicha so'rang</div>
+      <div class="ai-promo-title" data-i18n="ai_title">AI Yordamchi</div>
+      <div class="ai-promo-sub" data-i18n="ai_promo_sub">Hero, build, meta bo'yicha so'rang</div>
     </div>
   </div>
 </div>
 
 <div id="screen-wallet" class="screen">
-  <h2>Hamyon</h2>
+  <h2 data-i18n="wallet_title">Hamyon</h2>
   <div class="balance-card" style="text-align:center;">
-    <div class="balance-label">Joriy balans</div>
-    <div style="font-size:24px;font-weight:500;margin-bottom:14px;">0 <span style="font-size:13px;color:var(--accent);">so'm</span></div>
-    <button class="btn-primary" style="width:100%;padding:10px;">To'ldirish</button>
+    <div class="balance-label" data-i18n="wallet_balance_label">Joriy balans</div>
+    <div style="font-size:24px;font-weight:500;margin-bottom:14px;"><span class="money-value" data-uzs="0">0</span> <span class="money-unit" style="font-size:13px;color:var(--accent);">so'm</span></div>
+    <button class="btn-primary" style="width:100%;padding:10px;" data-i18n="topup_btn">To'ldirish</button>
   </div>
-  <div class="menu-label">TO'LOV USULLARI</div>
+  <div class="menu-label" data-i18n="payment_methods_label">TO'LOV USULLARI</div>
   <div class="menu-grid">
     <div class="menu-item" style="font-size:13px;">Payme</div>
     <div class="menu-item" style="font-size:13px;">Click</div>
   </div>
-  <div class="menu-label">TRANZAKSIYALAR</div>
-  <div class="card empty-state">Hali tranzaksiya yo'q</div>
+  <div class="menu-label" data-i18n="transactions_label">TRANZAKSIYALAR</div>
+  <div class="card empty-state" data-i18n="no_transactions">Hali tranzaksiya yo'q</div>
 </div>
 
 <div id="screen-ai" class="screen">
-  <h2>AI Yordamchi</h2>
-  <div class="chat-bubble chat-bot">Salom! Hero, build, counter-pick yoki yangiliklar bo'yicha so'rang.</div>
+  <h2 data-i18n="ai_title">AI Yordamchi</h2>
+  <div class="chat-bubble chat-bot" data-i18n="ai_greeting">Salom! Hero, build, counter-pick yoki yangiliklar bo'yicha so'rang.</div>
   <div style="display:flex;gap:8px;align-items:center;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:8px 10px;margin-top:16px;">
-    <input type="text" placeholder="Savolingizni yozing..." style="flex:1;background:transparent;border:none;color:var(--text);font-size:12px;outline:none;">
+    <input type="text" data-i18n-placeholder="ai_placeholder" placeholder="Savolingizni yozing..." style="flex:1;background:transparent;border:none;color:var(--text);font-size:12px;outline:none;">
     <span>➤</span>
   </div>
-  <p class="empty-state">AI hali ulanmagan — 7-bosqichda qo'shiladi</p>
+  <p class="empty-state" data-i18n="ai_note">AI hali ulanmagan — 7-bosqichda qo'shiladi</p>
 </div>
 
 <div id="screen-tournament" class="screen">
-  <h2>Turnirlar</h2>
-  <div class="card empty-state">Hali faol turnir yo'q</div>
+  <h2 data-i18n="menu_tournaments">Turnirlar</h2>
+  <div class="card empty-state" data-i18n="no_tournaments">Hali faol turnir yo'q</div>
 </div>
 
 <div id="screen-squad" class="screen">
-  <h2>Jamoa tuzish</h2>
-  <div class="card empty-state">Tez orada</div>
+  <h2 data-i18n="menu_squad">Jamoa tuzish</h2>
+  <div class="card empty-state" data-i18n="coming_soon">Tez orada</div>
 </div>
 
 <div id="screen-profile" class="screen">
-  <h2>Profilim</h2>
-  <div class="card">🎖 Yutuqlar</div>
-  <div class="card">🏆 Turnir tarixi</div>
-  <div class="card">👥 Jamoa tarixi</div>
-  <div class="card" onclick="showScreen('referral')">🎁 Referal</div>
-  <div class="card" onclick="showScreen('settings')">⚙️ Sozlamalar</div>
+  <h2 data-i18n="menu_profile">Profilim</h2>
+  <div class="card"><span data-i18n="profile_achievements">🎖 Yutuqlar</span></div>
+  <div class="card"><span data-i18n="profile_tournament_history">🏆 Turnir tarixi</span></div>
+  <div class="card"><span data-i18n="profile_squad_history">👥 Jamoa tarixi</span></div>
+  <div class="card" onclick="showScreen('referral')"><span data-i18n="profile_referral">🎁 Referal</span></div>
+  <div class="card" onclick="showScreen('settings')"><span data-i18n="profile_settings">⚙️ Sozlamalar</span></div>
 </div>
 
 <div id="screen-referral" class="screen">
-  <h2>Do'st taklif qiling</h2>
-  <div class="card empty-state">Tez orada</div>
+  <h2 data-i18n="referral_title">Do'st taklif qiling</h2>
+  <div class="card empty-state" data-i18n="coming_soon">Tez orada</div>
 </div>
 
 <div id="screen-settings" class="screen">
-  <h2>Sozlamalar</h2>
-  <div class="card">Til: 🇺🇿 O'zbek</div>
-  <div class="card">Mavzu: Dark</div>
+  <h2 data-i18n="settings_title">Sozlamalar</h2>
+
+  <div class="menu-label" data-i18n="settings_lang_label">TIL</div>
+  <div class="option-grid">
+    <button class="option-btn" data-lang="uz" onclick="setLanguage('uz')">🇺🇿<span>O'zbek</span></button>
+    <button class="option-btn" data-lang="ru" onclick="setLanguage('ru')">🇷🇺<span>Русский</span></button>
+    <button class="option-btn" data-lang="en" onclick="setLanguage('en')">🇬🇧<span>English</span></button>
+  </div>
+
+  <div class="menu-label" data-i18n="settings_currency_label">VALYUTA</div>
+  <div class="option-grid">
+    <button class="option-btn" data-currency="UZS" onclick="setCurrency('UZS')"><span>so'm</span><span class="curr-code">UZS</span></button>
+    <button class="option-btn" data-currency="RUB" onclick="setCurrency('RUB')"><span>₽</span><span class="curr-code">RUB</span></button>
+    <button class="option-btn" data-currency="USD" onclick="setCurrency('USD')"><span>$</span><span class="curr-code">USD</span></button>
+  </div>
+
+  <div class="menu-label" data-i18n="settings_theme_label">MAVZU</div>
+  <div class="card" data-i18n="settings_theme_value">Mavzu: Dark</div>
 </div>
 
 <div class="bottom-nav">
-  <button class="nav-item active" id="nav-home" onclick="showScreen('home')">🏠<span>Asosiy</span></button>
-  <button class="nav-item" id="nav-wallet" onclick="showScreen('wallet')">💳<span>Hamyon</span></button>
+  <button class="nav-item active" id="nav-home" onclick="showScreen('home')">🏠<span data-i18n="nav_home">Asosiy</span></button>
+  <button class="nav-item" id="nav-wallet" onclick="showScreen('wallet')">💳<span data-i18n="wallet_title">Hamyon</span></button>
   <button class="nav-item" id="nav-ai" onclick="showScreen('ai')">✨<span>AI</span></button>
-  <button class="nav-item" id="nav-tournament" onclick="showScreen('tournament')">🏆<span>Turnir</span></button>
-  <button class="nav-item" id="nav-profile" onclick="showScreen('profile')">👤<span>Profilim</span></button>
+  <button class="nav-item" id="nav-tournament" onclick="showScreen('tournament')">🏆<span data-i18n="nav_tournament">Turnir</span></button>
+  <button class="nav-item" id="nav-profile" onclick="showScreen('profile')">👤<span data-i18n="menu_profile">Profilim</span></button>
 </div>
 
 <script>
+  // ---------- Tarjimalar (UZ / RU / EN) ----------
+  var translations = {
+    uz: {
+      balance_label: "Hisobingiz",
+      topup_btn: "To'ldirish",
+      menu_label: "MENYU",
+      menu_donate: "Donat",
+      menu_tournaments: "Turnirlar",
+      menu_squad: "Jamoa tuzish",
+      menu_profile: "Profilim",
+      ai_title: "AI Yordamchi",
+      ai_promo_sub: "Hero, build, meta bo'yicha so'rang",
+      wallet_title: "Hamyon",
+      wallet_balance_label: "Joriy balans",
+      payment_methods_label: "TO'LOV USULLARI",
+      transactions_label: "TRANZAKSIYALAR",
+      no_transactions: "Hali tranzaksiya yo'q",
+      ai_greeting: "Salom! Hero, build, counter-pick yoki yangiliklar bo'yicha so'rang.",
+      ai_placeholder: "Savolingizni yozing...",
+      ai_note: "AI hali ulanmagan — 7-bosqichda qo'shiladi",
+      no_tournaments: "Hali faol turnir yo'q",
+      coming_soon: "Tez orada",
+      profile_achievements: "🎖 Yutuqlar",
+      profile_tournament_history: "🏆 Turnir tarixi",
+      profile_squad_history: "👥 Jamoa tarixi",
+      profile_referral: "🎁 Referal",
+      profile_settings: "⚙️ Sozlamalar",
+      referral_title: "Do'st taklif qiling",
+      settings_title: "Sozlamalar",
+      settings_lang_label: "TIL",
+      settings_currency_label: "VALYUTA",
+      settings_theme_label: "MAVZU",
+      settings_theme_value: "Mavzu: Dark",
+      nav_home: "Asosiy",
+      nav_tournament: "Turnir",
+      default_username: "Foydalanuvchi"
+    },
+    ru: {
+      balance_label: "Ваш баланс",
+      topup_btn: "Пополнить",
+      menu_label: "МЕНЮ",
+      menu_donate: "Донат",
+      menu_tournaments: "Турниры",
+      menu_squad: "Найти команду",
+      menu_profile: "Профиль",
+      ai_title: "AI Помощник",
+      ai_promo_sub: "Спросите про героя, билд, мету",
+      wallet_title: "Кошелёк",
+      wallet_balance_label: "Текущий баланс",
+      payment_methods_label: "СПОСОБЫ ОПЛАТЫ",
+      transactions_label: "ТРАНЗАКЦИИ",
+      no_transactions: "Пока нет транзакций",
+      ai_greeting: "Привет! Спросите про героя, билд, контрпик или новости.",
+      ai_placeholder: "Напишите вопрос...",
+      ai_note: "ИИ пока не подключён — появится на 7 этапе",
+      no_tournaments: "Пока нет активных турниров",
+      coming_soon: "Скоро",
+      profile_achievements: "🎖 Достижения",
+      profile_tournament_history: "🏆 История турниров",
+      profile_squad_history: "👥 История команд",
+      profile_referral: "🎁 Рефералы",
+      profile_settings: "⚙️ Настройки",
+      referral_title: "Пригласить друга",
+      settings_title: "Настройки",
+      settings_lang_label: "ЯЗЫК",
+      settings_currency_label: "ВАЛЮТА",
+      settings_theme_label: "ТЕМА",
+      settings_theme_value: "Тема: Тёмная",
+      nav_home: "Главная",
+      nav_tournament: "Турнир",
+      default_username: "Пользователь"
+    },
+    en: {
+      balance_label: "Your balance",
+      topup_btn: "Top up",
+      menu_label: "MENU",
+      menu_donate: "Donate",
+      menu_tournaments: "Tournaments",
+      menu_squad: "Find a squad",
+      menu_profile: "Profile",
+      ai_title: "AI Assistant",
+      ai_promo_sub: "Ask about heroes, builds, meta",
+      wallet_title: "Wallet",
+      wallet_balance_label: "Current balance",
+      payment_methods_label: "PAYMENT METHODS",
+      transactions_label: "TRANSACTIONS",
+      no_transactions: "No transactions yet",
+      ai_greeting: "Hi! Ask about a hero, build, counter-pick, or the latest news.",
+      ai_placeholder: "Type your question...",
+      ai_note: "AI isn't connected yet — coming in Stage 7",
+      no_tournaments: "No active tournaments yet",
+      coming_soon: "Coming soon",
+      profile_achievements: "🎖 Achievements",
+      profile_tournament_history: "🏆 Tournament history",
+      profile_squad_history: "👥 Squad history",
+      profile_referral: "🎁 Referral",
+      profile_settings: "⚙️ Settings",
+      referral_title: "Invite a friend",
+      settings_title: "Settings",
+      settings_lang_label: "LANGUAGE",
+      settings_currency_label: "CURRENCY",
+      settings_theme_label: "THEME",
+      settings_theme_value: "Theme: Dark",
+      nav_home: "Home",
+      nav_tournament: "Tournament",
+      default_username: "User"
+    }
+  };
+
+  var langMeta = {
+    uz: "🇺🇿 UZ",
+    ru: "🇷🇺 RU",
+    en: "🇬🇧 EN"
+  };
+
+  // Taxminiy kurs (1 birlik necha so'm) — vaqtinchalik, 10-bosqichda
+  // jonli API orqali avtomatik yangilanadigan bo'ladi.
+  var currencyRates = { UZS: 1, RUB: 160, USD: 12000 };
+  var currencySymbols = { UZS: "so'm", RUB: "₽", USD: "$" };
+
+  var hasTelegramUser = false;
+
+  function getStored(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function setStored(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {}
+  }
+
+  var currentLang = getStored('paymlbb_lang') || 'uz';
+  var currentCurrency = getStored('paymlbb_currency') || 'UZS';
+
+  function applyTranslations(lang) {
+    var dict = translations[lang] || translations.uz;
+    var nodes = document.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < nodes.length; i++) {
+      var key = nodes[i].getAttribute('data-i18n');
+      if (dict[key]) nodes[i].textContent = dict[key];
+    }
+    var placeholders = document.querySelectorAll('[data-i18n-placeholder]');
+    for (var j = 0; j < placeholders.length; j++) {
+      var pkey = placeholders[j].getAttribute('data-i18n-placeholder');
+      if (dict[pkey]) placeholders[j].placeholder = dict[pkey];
+    }
+    document.documentElement.lang = lang;
+    if (!hasTelegramUser) {
+      document.getElementById('home-username').textContent = dict.default_username;
+    }
+  }
+
+  function setLanguage(lang) {
+    if (!translations[lang]) return;
+    currentLang = lang;
+    setStored('paymlbb_lang', lang);
+    applyTranslations(lang);
+    document.getElementById('home-lang-btn').textContent = langMeta[lang];
+    var opts = document.querySelectorAll('.option-btn[data-lang]');
+    for (var i = 0; i < opts.length; i++) {
+      opts[i].classList.toggle('selected', opts[i].getAttribute('data-lang') === lang);
+    }
+  }
+
+  function formatMoneyValue(uzsAmount, currency) {
+    var rate = currencyRates[currency] || 1;
+    var converted = uzsAmount / rate;
+    if (currency === 'UZS') {
+      return Math.round(converted).toLocaleString('en-US');
+    }
+    return converted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function applyCurrency(currency) {
+    var values = document.querySelectorAll('.money-value');
+    for (var i = 0; i < values.length; i++) {
+      var uzs = parseFloat(values[i].getAttribute('data-uzs')) || 0;
+      values[i].textContent = formatMoneyValue(uzs, currency);
+    }
+    var units = document.querySelectorAll('.money-unit');
+    for (var j = 0; j < units.length; j++) {
+      units[j].textContent = currencySymbols[currency];
+    }
+  }
+
+  function setCurrency(currency) {
+    if (!currencyRates.hasOwnProperty(currency)) return;
+    currentCurrency = currency;
+    setStored('paymlbb_currency', currency);
+    applyCurrency(currency);
+    var opts = document.querySelectorAll('.option-btn[data-currency]');
+    for (var i = 0; i < opts.length; i++) {
+      opts[i].classList.toggle('selected', opts[i].getAttribute('data-currency') === currency);
+    }
+  }
+
   var tg = window.Telegram ? window.Telegram.WebApp : null;
   if (tg) {
     tg.ready();
     tg.expand();
     var user = tg.initDataUnsafe && tg.initDataUnsafe.user;
     if (user) {
-      document.getElementById('home-username').textContent = user.first_name || 'Foydalanuvchi';
+      hasTelegramUser = true;
+      document.getElementById('home-username').textContent = user.first_name || translations[currentLang].default_username;
       var initials = (user.first_name ? user.first_name[0] : '') + (user.last_name ? user.last_name[0] : '');
       document.getElementById('home-avatar').textContent = initials.toUpperCase() || 'U';
     }
   }
+
+  setLanguage(currentLang);
+  setCurrency(currentCurrency);
 
   function showScreen(name) {
     var screens = document.querySelectorAll('.screen');
