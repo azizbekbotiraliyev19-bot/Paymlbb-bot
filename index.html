@@ -153,7 +153,14 @@
 
 <div id="screen-referral" class="screen">
   <h2 data-i18n="referral_title">Do'st taklif qiling</h2>
-  <div class="card empty-state" data-i18n="coming_soon">Tez orada</div>
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <span id="referral-link" style="font-size:12px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">...</span>
+    <button class="btn-primary" onclick="copyReferralLink()" data-i18n="referral_copy_btn">Nusxalash</button>
+  </div>
+  <div class="card">
+    <span data-i18n="referral_count_label">Taklif qilingan do'stlar:</span>
+    <strong id="referral-count">0</strong>
+  </div>
 </div>
 
 <div id="screen-settings" class="screen">
@@ -217,6 +224,9 @@
       profile_referral: "🎁 Referal",
       profile_settings: "⚙️ Sozlamalar",
       referral_title: "Do'st taklif qiling",
+      referral_copy_btn: "Nusxalash",
+      referral_count_label: "Taklif qilingan do'stlar:",
+      referral_copied: "Nusxalandi!",
       settings_title: "Sozlamalar",
       settings_lang_label: "TIL",
       settings_currency_label: "VALYUTA",
@@ -252,6 +262,9 @@
       profile_referral: "🎁 Рефералы",
       profile_settings: "⚙️ Настройки",
       referral_title: "Пригласить друга",
+      referral_copy_btn: "Копировать",
+      referral_count_label: "Приглашённые друзья:",
+      referral_copied: "Скопировано!",
       settings_title: "Настройки",
       settings_lang_label: "ЯЗЫК",
       settings_currency_label: "ВАЛЮТА",
@@ -287,6 +300,9 @@
       profile_referral: "🎁 Referral",
       profile_settings: "⚙️ Settings",
       referral_title: "Invite a friend",
+      referral_copy_btn: "Copy",
+      referral_count_label: "Invited friends:",
+      referral_copied: "Copied!",
       settings_title: "Settings",
       settings_lang_label: "LANGUAGE",
       settings_currency_label: "CURRENCY",
@@ -420,9 +436,46 @@
     }
   }
 
+  // ---------- Bot'dan haqiqiy referal ma'lumotini olish ----------
+  var currentReferralLink = "";
+
+  function loadReferral() {
+    if (!tg || !tg.initData) return;
+
+    fetch(API_BASE + '/api/referrals', {
+      method: 'GET',
+      headers: { 'X-Telegram-Init-Data': tg.initData }
+    })
+      .then(function (res) {
+        if (!res.ok) { throw new Error('referal so\'rovi muvaffaqiyatsiz: ' + res.status); }
+        return res.json();
+      })
+      .then(function (data) {
+        currentReferralLink = data.referral_link || "";
+        var linkEl = document.getElementById('referral-link');
+        var countEl = document.getElementById('referral-count');
+        if (linkEl) { linkEl.textContent = currentReferralLink; }
+        if (countEl) { countEl.textContent = data.referred_count || 0; }
+      })
+      .catch(function (err) {
+        console.log('Referalni yuklashda xatolik:', err);
+      });
+  }
+
+  function copyReferralLink() {
+    if (!currentReferralLink) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(currentReferralLink);
+    }
+    if (tg && tg.showPopup) {
+      tg.showPopup({ message: translations[currentLang].referral_copied || 'Copied!' });
+    }
+  }
+
   setLanguage(currentLang);
   setCurrency(currentCurrency);
   loadProfile();
+  loadReferral();
 
   function showScreen(name) {
     var screens = document.querySelectorAll('.screen');
