@@ -186,6 +186,9 @@
 </div>
 
 <script>
+  // ---------- Bot API manzili (Mini App shundan real ma'lumot oladi) ----------
+  var API_BASE = "https://paymlbb-bot-production.up.railway.app";
+
   // ---------- Tarjimalar (UZ / RU / EN) ----------
   var translations = {
     uz: {
@@ -380,6 +383,30 @@
     }
   }
 
+  // ---------- Bot'dan haqiqiy profil (balans) ma'lumotini olish ----------
+  function loadProfile() {
+    if (!tg || !tg.initData) return;
+
+    fetch(API_BASE + '/api/profile', {
+      method: 'GET',
+      headers: { 'X-Telegram-Init-Data': tg.initData }
+    })
+      .then(function (res) {
+        if (!res.ok) { throw new Error('profil so\'rovi muvaffaqiyatsiz: ' + res.status); }
+        return res.json();
+      })
+      .then(function (data) {
+        var moneyEls = document.querySelectorAll('.money-value');
+        for (var i = 0; i < moneyEls.length; i++) {
+          moneyEls[i].setAttribute('data-uzs', data.balance || 0);
+        }
+        applyCurrency(currentCurrency);
+      })
+      .catch(function (err) {
+        console.log('Profilni yuklashda xatolik:', err);
+      });
+  }
+
   var tg = window.Telegram ? window.Telegram.WebApp : null;
   if (tg) {
     tg.ready();
@@ -395,6 +422,7 @@
 
   setLanguage(currentLang);
   setCurrency(currentCurrency);
+  loadProfile();
 
   function showScreen(name) {
     var screens = document.querySelectorAll('.screen');
