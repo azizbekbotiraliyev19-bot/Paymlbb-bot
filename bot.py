@@ -10,7 +10,7 @@ from urllib.parse import parse_qsl
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiohttp import web
-from sqlalchemy import BigInteger, String, Numeric, DateTime, func, select
+from sqlalchemy import BigInteger, ForeignKey, String, Numeric, DateTime, func, select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -49,7 +49,11 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(String(100), nullable=True)
     language: Mapped[str] = mapped_column(String(5), default="uz")
     wallet_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    referred_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+BOT_USERNAME = "paymlbbaibot"
 
 
 async def init_db():
@@ -59,6 +63,11 @@ async def init_db():
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
+    referral_code = None
+    parts = message.text.split(maxsplit=1)
+    if len(parts) > 1 and parts[1].startswith("ref_"):
+        referral_code = parts[1].replace("ref_", "")
+
     async with async_session() as session:
         result = await session.execute(
             select(User).where(User.telegram_id == message.from_user.id)
@@ -72,6 +81,19 @@ async def cmd_start(message: types.Message):
                 first_name=message.from_user.first_name,
                 language=message.from_user.language_code or "uz",
             )
+
+            if referral_code:
+                try:
+                    referrer_tid = int(referral_code)
+                    ref_result = await session.execute(
+                        select(User).where(User.telegram_id == referrer_tid)
+                    )
+                    referrer = ref_result.scalar_one_or_none()
+                    if referrer and referrer.telegram_id != message.from_user.id:
+                        user.referred_by_id = referrer.id
+                except ValueError:
+                    pass
+
             session.add(user)
             await session.commit()
             logger.info(f"Yangi foydalanuvchi saqlandi: {message.from_user.id}")
@@ -143,6 +165,43 @@ async def api_profile(request: web.Request) -> web.Response:
     )
 
 
+async def api_referrals(request: web.Request) -> web.Response:
+    if request.method == "OPTIONS":
+        return web.Response()
+
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    parsed = verify_telegram_init_data(init_data)
+    if not parsed:
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    try:
+        user_info = json.loads(parsed.get("user", "{}"))
+        telegram_id = user_info["id"]
+    except (KeyError, json.JSONDecodeError):
+        return web.json_response({"error": "invalid_user"}, status=400)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if user is None:
+            return web.json_response({"error": "not_found"}, status=404)
+
+        count_result = await session.execute(
+            select(func.count()).select_from(User).where(User.referred_by_id == user.id)
+        )
+        referred_count = count_result.scalar_one()
+
+    return web.json_response(
+        {
+            "referral_link": f"https://t.me/{BOT_USERNAME}?start=ref_{telegram_id}",
+            "referred_count": referred_count,
+        }
+    )
+
+
 async def cors_middleware(app, handler):
     async def middleware_handler(request):
         if request.method == "OPTIONS":
@@ -161,6 +220,8 @@ def create_web_app() -> web.Application:
     app = web.Application(middlewares=[cors_middleware])
     app.router.add_route("GET", "/api/profile", api_profile)
     app.router.add_route("OPTIONS", "/api/profile", api_profile)
+    app.router.add_route("GET", "/api/referrals", api_referrals)
+    app.router.add_route("OPTIONS", "/api/referrals", api_referrals)
     return app
 
 
