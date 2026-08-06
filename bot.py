@@ -10,7 +10,7 @@ from urllib.parse import parse_qsl
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiohttp import web
-from sqlalchemy import BigInteger, ForeignKey, String, Numeric, DateTime, func, select
+from sqlalchemy import BigInteger, ForeignKey, String, Numeric, DateTime, func, select, text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -59,10 +59,45 @@ BOT_USERNAME = "paymlbbaibot"
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_new_columns(conn)
+
+
+async def _ensure_new_columns(conn):
+    """Mavjud jadvalga model'da bor-u, bazada yo'q ustunlarni avtomatik
+    qo'shadi. create_all() faqat YO'Q jadvalni yaratadi, mavjud jadvalni
+    o'zgartirmaydi — shuning uchun har safar shu tekshiruv kerak."""
+    from sqlalchemy import inspect, text
+
+    def get_existing_columns(sync_conn):
+        inspector = inspect(sync_conn)
+        if "users" not in inspector.get_table_names():
+            return set()
+        return {col["name"] for col in inspector.get_columns("users")}
+
+    existing = await conn.run_sync(get_existing_columns)
+    if not existing:
+        return
+
+    if "referred_by_id" not in existing:
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN referred_by_id INTEGER REFERENCES users(id)"
+        ))
+        logger.info("Baza yangilandi: users.referred_by_id ustuni qo'shildi")
 
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
+    try:
+        await _handle_start(message)
+    except Exception:
+        logger.exception(f"/start da xato, foydalanuvchi {message.from_user.id}")
+        await message.answer(
+            "Kechirasiz, texnik xato yuz berdi. Biroz vaqtdan so'ng "
+            "qayta urinib ko'ring — bu haqida ma'lumot loglarga yozildi."
+        )
+
+
+async def _handle_start(message: types.Message):
     referral_code = None
     parts = message.text.split(maxsplit=1)
     if len(parts) > 1 and parts[1].startswith("ref_"):
@@ -202,18 +237,16 @@ async def api_referrals(request: web.Request) -> web.Response:
     )
 
 
-async def cors_middleware(app, handler):
-    async def middleware_handler(request):
-        if request.method == "OPTIONS":
-            response = web.Response()
-        else:
-            response = await handler(request)
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Headers"] = "X-Telegram-Init-Data, Content-Type"
-        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-        return response
-
-    return middleware_handler
+@web.middleware
+async def cors_middleware(request, handler):
+    if request.method == "OPTIONS":
+        response = web.Response()
+    else:
+        response = await handler(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "X-Telegram-Init-Data, Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    return response
 
 
 def create_web_app() -> web.Application:
@@ -226,18 +259,22 @@ def create_web_app() -> web.Application:
 
 
 async def main():
-    logger.info("Bazani tekshirmoqda...")
-    await init_db()
+    try:
+        logger.info("Bazani tekshirmoqda...")
+        await init_db()
 
-    web_app = create_web_app()
-    runner = web.AppRunner(web_app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    logger.info(f"Veb-server {PORT}-portda ishga tushdi (Mini App uchun API)...")
+        web_app = create_web_app()
+        runner = web.AppRunner(web_app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", PORT)
+        await site.start()
+        logger.info(f"Veb-server {PORT}-portda ishga tushdi (Mini App uchun API)...")
 
-    logger.info("Bot ishga tushmoqda...")
-    await dp.start_polling(bot)
+        logger.info("Bot ishga tushmoqda...")
+        await dp.start_polling(bot)
+    except Exception:
+        logger.exception("HALOKATLI XATO — bot ishga tusholmadi yoki tuxtadi")
+        raise
 
 
 if __name__ == "__main__":
