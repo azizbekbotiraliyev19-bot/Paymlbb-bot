@@ -44,6 +44,7 @@
   .menu-label { color:var(--text-muted); font-size:11px; font-weight:500; margin-bottom:8px; letter-spacing:0.5px; }
   .menu-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
   .menu-item { background:var(--surface); border-radius:12px; padding:14px 10px; text-align:center; border:0.5px solid var(--border); font-size:22px; }
+  .lane-btn.active { border:2px solid var(--accent); color:var(--accent); }
   .menu-item span { display:block; font-size:12px; margin-top:6px; }
 
   .ai-promo { background: linear-gradient(135deg, #312E81, #1E1B4B); border-radius:14px; padding:14px; display:flex; align-items:center; gap:10px; }
@@ -134,12 +135,27 @@
 
 <div id="screen-tournament" class="screen">
   <h2 data-i18n="menu_tournaments">Turnirlar</h2>
-  <div class="card empty-state" data-i18n="no_tournaments">Hali faol turnir yo'q</div>
+  <div id="tournament-list">
+    <div class="card empty-state" data-i18n="no_tournaments">Hali faol turnir yo'q</div>
+  </div>
 </div>
 
 <div id="screen-squad" class="screen">
   <h2 data-i18n="menu_squad">Jamoa tuzish</h2>
-  <div class="card empty-state" data-i18n="coming_soon">Tez orada</div>
+  <div class="menu-label" data-i18n="squad_lane_label">LINIYA</div>
+  <div class="menu-grid" id="squad-lane-filter">
+    <div class="menu-item lane-btn active" data-lane="" style="font-size:13px;" data-i18n="squad_lane_all">Barchasi</div>
+    <div class="menu-item lane-btn" data-lane="gold" style="font-size:13px;">Gold Lane</div>
+    <div class="menu-item lane-btn" data-lane="mid" style="font-size:13px;">Mid Lane</div>
+    <div class="menu-item lane-btn" data-lane="exp" style="font-size:13px;">Exp Lane</div>
+    <div class="menu-item lane-btn" data-lane="jungle" style="font-size:13px;">Jungle</div>
+    <div class="menu-item lane-btn" data-lane="roam" style="font-size:13px;">Roam</div>
+  </div>
+  <button class="btn-primary" style="width:100%;padding:10px;margin-bottom:14px;" onclick="createSquad()" data-i18n="squad_create_btn">+ Jamoa yaratish</button>
+  <div class="menu-label" data-i18n="squad_list_label">MOS JAMOALAR</div>
+  <div id="squad-list">
+    <div class="card empty-state" data-i18n="squad_empty">Hozircha ochiq jamoa yo'q</div>
+  </div>
 </div>
 
 <div id="screen-profile" class="screen">
@@ -217,6 +233,15 @@
       ai_placeholder: "Savolingizni yozing...",
       ai_note: "AI hali ulanmagan — 7-bosqichda qo'shiladi",
       no_tournaments: "Hali faol turnir yo'q",
+      squad_lane_label: "Liniya",
+      squad_lane_all: "Barchasi",
+      squad_create_btn: "+ Jamoa yaratish",
+      squad_list_label: "Mos jamoalar",
+      squad_empty: "Hozircha ochiq jamoa yo'q",
+      squad_join_btn: "Taklif",
+      squad_created: "Jamoa yaratildi!",
+      tournament_join_btn: "Ishtirok etish",
+      tournament_joined: "Ro'yxatdan o'tdingiz!",
       coming_soon: "Tez orada",
       profile_achievements: "🎖 Yutuqlar",
       profile_tournament_history: "🏆 Turnir tarixi",
@@ -255,6 +280,15 @@
       ai_placeholder: "Напишите вопрос...",
       ai_note: "ИИ пока не подключён — появится на 7 этапе",
       no_tournaments: "Пока нет активных турниров",
+      squad_lane_label: "Линия",
+      squad_lane_all: "Все",
+      squad_create_btn: "+ Создать команду",
+      squad_list_label: "Подходящие команды",
+      squad_empty: "Пока нет открытых команд",
+      squad_join_btn: "Присоединиться",
+      squad_created: "Команда создана!",
+      tournament_join_btn: "Участвовать",
+      tournament_joined: "Вы зарегистрированы!",
       coming_soon: "Скоро",
       profile_achievements: "🎖 Достижения",
       profile_tournament_history: "🏆 История турниров",
@@ -293,6 +327,15 @@
       ai_placeholder: "Type your question...",
       ai_note: "AI isn't connected yet — coming in Stage 7",
       no_tournaments: "No active tournaments yet",
+      squad_lane_label: "Lane",
+      squad_lane_all: "All",
+      squad_create_btn: "+ Create squad",
+      squad_list_label: "Matching squads",
+      squad_empty: "No open squads yet",
+      squad_join_btn: "Request",
+      squad_created: "Squad created!",
+      tournament_join_btn: "Join",
+      tournament_joined: "You're registered!",
       coming_soon: "Coming soon",
       profile_achievements: "🎖 Achievements",
       profile_tournament_history: "🏆 Tournament history",
@@ -472,10 +515,130 @@
     }
   }
 
+  // ---------- Turnirlar ----------
+  function loadTournaments() {
+    fetch(API_BASE + '/api/tournaments')
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var list = document.getElementById('tournament-list');
+        var tournaments = data.tournaments || [];
+        if (tournaments.length === 0) {
+          list.innerHTML = '<div class="card empty-state">' +
+            (translations[currentLang].no_tournaments || 'No tournaments') + '</div>';
+          return;
+        }
+        list.innerHTML = tournaments.map(function (t) {
+          return '<div class="card">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+            '<strong>' + t.name + '</strong>' +
+            '<span style="font-size:11px;color:var(--text-muted);">' + t.participant_count + '/' + t.max_participants + '</span>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;font-size:12px;">' +
+            '<div>Kirish: <span class="money-value" data-uzs="' + t.entry_fee + '">' + t.entry_fee + '</span></div>' +
+            '<div>Mukofot: <span class="money-value" data-uzs="' + t.prize_pool + '">' + t.prize_pool + '</span></div>' +
+            '</div>' +
+            '<button class="btn-primary" style="width:100%;padding:8px;" onclick="joinTournament(' + t.id + ')">' +
+            (translations[currentLang].tournament_join_btn || 'Join') + '</button>' +
+            '</div>';
+        }).join('');
+        applyCurrency(currentCurrency);
+      })
+      .catch(function (err) { console.log('Turnirlarni yuklashda xatolik:', err); });
+  }
+
+  function joinTournament(tournamentId) {
+    if (!tg || !tg.initData) return;
+    fetch(API_BASE + '/api/tournaments/' + tournamentId + '/join', {
+      method: 'POST',
+      headers: { 'X-Telegram-Init-Data': tg.initData }
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.success && tg.showPopup) {
+          tg.showPopup({ message: translations[currentLang].tournament_joined || 'Joined!' });
+        }
+        loadTournaments();
+      })
+      .catch(function (err) { console.log('Turnirga qoshilishda xatolik:', err); });
+  }
+
+  // ---------- Jamoa tuzish ----------
+  var currentLaneFilter = "";
+
+  function loadSquads() {
+    var url = API_BASE + '/api/squads';
+    if (currentLaneFilter) { url += '?lane=' + currentLaneFilter; }
+
+    fetch(url)
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var list = document.getElementById('squad-list');
+        var squads = data.squads || [];
+        if (squads.length === 0) {
+          list.innerHTML = '<div class="card empty-state">' +
+            (translations[currentLang].squad_empty || 'No squads') + '</div>';
+          return;
+        }
+        list.innerHTML = squads.map(function (s) {
+          return '<div class="card" style="display:flex;justify-content:space-between;align-items:center;">' +
+            '<div><strong>' + s.lane + '</strong><div style="font-size:11px;color:var(--text-muted);">' +
+            s.created_by + ' · ' + s.member_count + '/' + s.max_members + '</div></div>' +
+            '<button class="btn-primary" style="padding:6px 14px;font-size:12px;" onclick="joinSquad(' + s.id + ')">' +
+            (translations[currentLang].squad_join_btn || 'Join') + '</button>' +
+            '</div>';
+        }).join('');
+      })
+      .catch(function (err) { console.log('Jamoalarni yuklashda xatolik:', err); });
+  }
+
+  function joinSquad(squadId) {
+    if (!tg || !tg.initData) return;
+    fetch(API_BASE + '/api/squads/' + squadId + '/join', {
+      method: 'POST',
+      headers: { 'X-Telegram-Init-Data': tg.initData }
+    })
+      .then(function (res) { return res.json(); })
+      .then(function () { loadSquads(); })
+      .catch(function (err) { console.log('Jamoaga qoshilishda xatolik:', err); });
+  }
+
+  function createSquad() {
+    if (!tg || !tg.initData) return;
+    var lane = currentLaneFilter || 'gold';
+    fetch(API_BASE + '/api/squads', {
+      method: 'POST',
+      headers: {
+        'X-Telegram-Init-Data': tg.initData,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ lane: lane })
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.success && tg.showPopup) {
+          tg.showPopup({ message: translations[currentLang].squad_created || 'Created!' });
+        }
+        loadSquads();
+      })
+      .catch(function (err) { console.log('Jamoa yaratishda xatolik:', err); });
+  }
+
+  var laneButtons = document.querySelectorAll('.lane-btn');
+  for (var li = 0; li < laneButtons.length; li++) {
+    laneButtons[li].addEventListener('click', function () {
+      for (var lj = 0; lj < laneButtons.length; lj++) { laneButtons[lj].classList.remove('active'); }
+      this.classList.add('active');
+      currentLaneFilter = this.getAttribute('data-lane');
+      loadSquads();
+    });
+  }
+
   setLanguage(currentLang);
   setCurrency(currentCurrency);
   loadProfile();
   loadReferral();
+  loadTournaments();
+  loadSquads();
 
   function showScreen(name) {
     var screens = document.querySelectorAll('.screen');
