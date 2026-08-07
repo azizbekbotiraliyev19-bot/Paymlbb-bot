@@ -8,9 +8,9 @@ from datetime import datetime
 from urllib.parse import parse_qsl
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiohttp import web
-from sqlalchemy import BigInteger, ForeignKey, String, Numeric, DateTime, func, select, text
+from sqlalchemy import BigInteger, ForeignKey, Integer, String, Numeric, DateTime, func, select, text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -49,11 +49,89 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(String(100), nullable=True)
     language: Mapped[str] = mapped_column(String(5), default="uz")
     wallet_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    loyalty_points: Mapped[int] = mapped_column(Integer, default=0)
     referred_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class Tournament(Base):
+    __tablename__ = "tournaments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(150))
+    entry_fee: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    prize_pool: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    max_participants: Mapped[int] = mapped_column(Integer, default=64)
+    status: Mapped[str] = mapped_column(String(20), default="upcoming")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class TournamentParticipant(Base):
+    __tablename__ = "tournament_participants"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Squad(Base):
+    __tablename__ = "squads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    lane: Mapped[str] = mapped_column(String(30))
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    max_members: Mapped[int] = mapped_column(Integer, default=5)
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class SquadMember(Base):
+    __tablename__ = "squad_members"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    squad_id: Mapped[int] = mapped_column(ForeignKey("squads.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 BOT_USERNAME = "paymlbbaibot"
+
+SUPER_ADMIN_IDS = {
+    int(x) for x in os.getenv("SUPER_ADMIN_IDS", "").split(",") if x.strip()
+}
+
+
+def is_admin(telegram_id: int) -> bool:
+    return telegram_id in SUPER_ADMIN_IDS
+
+
+# Loyalty rank — bot ichidagi faollik balliga asoslangan, o'yin rankiga
+# BOG'LIQ EMAS (Moonton rasmiy statistika API bermaydi).
+LOYALTY_RANKS = [
+    (0, "warrior"),
+    (100, "elite"),
+    (300, "master"),
+    (700, "grandmaster"),
+    (1500, "epic"),
+    (3000, "legend"),
+    (6000, "mythic"),
+]
+
+
+def calculate_rank(points: int) -> str:
+    rank = LOYALTY_RANKS[0][1]
+    for threshold, name in LOYALTY_RANKS:
+        if points >= threshold:
+            rank = name
+        else:
+            break
+    return rank
+
+
+async def add_loyalty_points(session, user: "User", amount: int, reason: str):
+    user.loyalty_points += amount
+    logger.info(f"+{amount} ball ({reason}) — foydalanuvchi {user.telegram_id}")
 
 
 async def init_db():
@@ -83,6 +161,12 @@ async def _ensure_new_columns(conn):
             "ALTER TABLE users ADD COLUMN referred_by_id INTEGER REFERENCES users(id)"
         ))
         logger.info("Baza yangilandi: users.referred_by_id ustuni qo'shildi")
+
+    if "loyalty_points" not in existing:
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN loyalty_points INTEGER DEFAULT 0"
+        ))
+        logger.info("Baza yangilandi: users.loyalty_points ustuni qo'shildi")
 
 
 @dp.message(CommandStart())
@@ -196,6 +280,8 @@ async def api_profile(request: web.Request) -> web.Response:
             "balance": float(user.wallet_balance),
             "language": user.language,
             "joined": user.created_at.isoformat(),
+            "loyalty_points": user.loyalty_points,
+            "loyalty_rank": calculate_rank(user.loyalty_points),
         }
     )
 
@@ -237,6 +323,274 @@ async def api_referrals(request: web.Request) -> web.Response:
     )
 
 
+# ---------------------------------------------------------------------------
+# Turnir moduli — admin /yangi_turnir orqali yaratadi, Mini App orqali
+# foydalanuvchilar ro'yxatdan o'tadi
+# ---------------------------------------------------------------------------
+
+@dp.message(Command("yangi_turnir"))
+async def cmd_new_tournament(message: types.Message):
+    """Format: /yangi_turnir Nomi | kirish_tolovi | mukofot | max_ishtirokchi
+    Masalan: /yangi_turnir Hafta kubogi | 15000 | 500000 | 64"""
+    if not is_admin(message.from_user.id):
+        return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(
+            "Format: /yangi_turnir Nomi | kirish_tolovi | mukofot | max_ishtirokchi\n"
+            "Masalan: /yangi_turnir Hafta kubogi | 15000 | 500000 | 64"
+        )
+        return
+
+    parts = [p.strip() for p in args[1].split("|")]
+    if len(parts) != 4:
+        await message.answer("4 ta qism kerak: Nomi | kirish | mukofot | max_ishtirokchi")
+        return
+
+    try:
+        name, entry_fee, prize_pool, max_participants = parts
+        entry_fee = float(entry_fee)
+        prize_pool = float(prize_pool)
+        max_participants = int(max_participants)
+    except ValueError:
+        await message.answer("Raqamlar noto'g'ri kiritildi.")
+        return
+
+    async with async_session() as session:
+        tournament = Tournament(
+            name=name,
+            entry_fee=entry_fee,
+            prize_pool=prize_pool,
+            max_participants=max_participants,
+            status="upcoming",
+        )
+        session.add(tournament)
+        await session.commit()
+        tournament_id = tournament.id
+
+    await message.answer(f"✅ Turnir yaratildi: \"{name}\" (ID: {tournament_id})")
+
+
+async def api_tournaments(request: web.Request) -> web.Response:
+    if request.method == "OPTIONS":
+        return web.Response()
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Tournament).where(Tournament.status != "finished")
+        )
+        tournaments = result.scalars().all()
+
+        data = []
+        for t in tournaments:
+            count_result = await session.execute(
+                select(func.count()).select_from(TournamentParticipant)
+                .where(TournamentParticipant.tournament_id == t.id)
+            )
+            participant_count = count_result.scalar_one()
+            data.append({
+                "id": t.id,
+                "name": t.name,
+                "entry_fee": float(t.entry_fee),
+                "prize_pool": float(t.prize_pool),
+                "max_participants": t.max_participants,
+                "participant_count": participant_count,
+                "status": t.status,
+            })
+
+    return web.json_response({"tournaments": data})
+
+
+async def api_join_tournament(request: web.Request) -> web.Response:
+    if request.method == "OPTIONS":
+        return web.Response()
+
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    parsed = verify_telegram_init_data(init_data)
+    if not parsed:
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    try:
+        user_info = json.loads(parsed.get("user", "{}"))
+        telegram_id = user_info["id"]
+        tournament_id = int(request.match_info["tournament_id"])
+    except (KeyError, json.JSONDecodeError, ValueError):
+        return web.json_response({"error": "invalid_request"}, status=400)
+
+    async with async_session() as session:
+        user_result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = user_result.scalar_one_or_none()
+        if user is None:
+            return web.json_response({"error": "user_not_found"}, status=404)
+
+        tournament = await session.get(Tournament, tournament_id)
+        if tournament is None:
+            return web.json_response({"error": "tournament_not_found"}, status=404)
+
+        existing = await session.execute(
+            select(TournamentParticipant).where(
+                TournamentParticipant.tournament_id == tournament_id,
+                TournamentParticipant.user_id == user.id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return web.json_response({"error": "already_joined"}, status=409)
+
+        participant = TournamentParticipant(tournament_id=tournament_id, user_id=user.id)
+        session.add(participant)
+        await add_loyalty_points(session, user, 20, "turnirga qatnashish")
+        await session.commit()
+
+    return web.json_response({"success": True})
+
+
+# ---------------------------------------------------------------------------
+# Jamoa tuzish (Squad finder) — liniya bo'yicha jamoa yaratish va qo'shilish
+# ---------------------------------------------------------------------------
+
+async def api_squads(request: web.Request) -> web.Response:
+    if request.method == "OPTIONS":
+        return web.Response()
+
+    lane_filter = request.query.get("lane")
+
+    async with async_session() as session:
+        query = select(Squad).where(Squad.status == "open")
+        if lane_filter:
+            query = query.where(Squad.lane == lane_filter)
+        result = await session.execute(query)
+        squads = result.scalars().all()
+
+        data = []
+        for s in squads:
+            count_result = await session.execute(
+                select(func.count()).select_from(SquadMember)
+                .where(SquadMember.squad_id == s.id)
+            )
+            member_count = count_result.scalar_one()
+            creator = await session.get(User, s.created_by_id)
+            data.append({
+                "id": s.id,
+                "lane": s.lane,
+                "member_count": member_count,
+                "max_members": s.max_members,
+                "created_by": creator.first_name if creator else "?",
+            })
+
+    return web.json_response({"squads": data})
+
+
+async def api_create_squad(request: web.Request) -> web.Response:
+    if request.method == "OPTIONS":
+        return web.Response()
+
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    parsed = verify_telegram_init_data(init_data)
+    if not parsed:
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    try:
+        user_info = json.loads(parsed.get("user", "{}"))
+        telegram_id = user_info["id"]
+        body = await request.json()
+        lane = body["lane"]
+    except (KeyError, json.JSONDecodeError):
+        return web.json_response({"error": "invalid_request"}, status=400)
+
+    async with async_session() as session:
+        user_result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = user_result.scalar_one_or_none()
+        if user is None:
+            return web.json_response({"error": "user_not_found"}, status=404)
+
+        squad = Squad(lane=lane, created_by_id=user.id)
+        session.add(squad)
+        await session.flush()
+
+        member = SquadMember(squad_id=squad.id, user_id=user.id)
+        session.add(member)
+        await session.commit()
+        squad_id = squad.id
+
+    return web.json_response({"success": True, "squad_id": squad_id})
+
+
+async def api_join_squad(request: web.Request) -> web.Response:
+    if request.method == "OPTIONS":
+        return web.Response()
+
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    parsed = verify_telegram_init_data(init_data)
+    if not parsed:
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    try:
+        user_info = json.loads(parsed.get("user", "{}"))
+        telegram_id = user_info["id"]
+        squad_id = int(request.match_info["squad_id"])
+    except (KeyError, json.JSONDecodeError, ValueError):
+        return web.json_response({"error": "invalid_request"}, status=400)
+
+    async with async_session() as session:
+        user_result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = user_result.scalar_one_or_none()
+        if user is None:
+            return web.json_response({"error": "user_not_found"}, status=404)
+
+        squad = await session.get(Squad, squad_id)
+        if squad is None or squad.status != "open":
+            return web.json_response({"error": "squad_not_available"}, status=404)
+
+        count_result = await session.execute(
+            select(func.count()).select_from(SquadMember)
+            .where(SquadMember.squad_id == squad_id)
+        )
+        member_count = count_result.scalar_one()
+        if member_count >= squad.max_members:
+            return web.json_response({"error": "squad_full"}, status=409)
+
+        existing = await session.execute(
+            select(SquadMember).where(
+                SquadMember.squad_id == squad_id,
+                SquadMember.user_id == user.id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return web.json_response({"error": "already_joined"}, status=409)
+
+        member = SquadMember(squad_id=squad_id, user_id=user.id)
+        session.add(member)
+
+        if member_count + 1 >= squad.max_members:
+            squad.status = "full"
+
+        await session.commit()
+
+    return web.json_response({"success": True})
+
+
+# ---------------------------------------------------------------------------
+# TODO — quyidagilar tashqi ma'lumot/qaror kutmoqda, hali ULANMAGAN:
+#
+# 1. TO'LOV (Payme/Click): merchant ID va maxfiy kalitlar kerak.
+#    Olganingizdan keyin shu yerga /api/payment/webhook qo'shiladi.
+#
+# 2. AI YORDAMCHI: qaysi AI API ishlatishni tanlash kerak (masalan
+#    Anthropic Claude API), va API kalit kerak. Shundan keyin
+#    /api/ai/ask endpoint qo'shiladi.
+#
+# 3. DIAMOND TOP-UP: faqat rasmiy Moonton/distribyutor hamkorligi
+#    hujjat bilan tasdiqlangandan keyin qurilishi kerak.
+# ---------------------------------------------------------------------------
+
+
 @web.middleware
 async def cors_middleware(request, handler):
     if request.method == "OPTIONS":
@@ -255,6 +609,15 @@ def create_web_app() -> web.Application:
     app.router.add_route("OPTIONS", "/api/profile", api_profile)
     app.router.add_route("GET", "/api/referrals", api_referrals)
     app.router.add_route("OPTIONS", "/api/referrals", api_referrals)
+    app.router.add_route("GET", "/api/tournaments", api_tournaments)
+    app.router.add_route("OPTIONS", "/api/tournaments", api_tournaments)
+    app.router.add_route("POST", "/api/tournaments/{tournament_id}/join", api_join_tournament)
+    app.router.add_route("OPTIONS", "/api/tournaments/{tournament_id}/join", api_join_tournament)
+    app.router.add_route("GET", "/api/squads", api_squads)
+    app.router.add_route("OPTIONS", "/api/squads", api_squads)
+    app.router.add_route("POST", "/api/squads", api_create_squad)
+    app.router.add_route("POST", "/api/squads/{squad_id}/join", api_join_squad)
+    app.router.add_route("OPTIONS", "/api/squads/{squad_id}/join", api_join_squad)
     return app
 
 
