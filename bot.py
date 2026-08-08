@@ -4,7 +4,9 @@ import hmac
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+
+import aiohttp
 from urllib.parse import parse_qsl
 
 from aiogram import Bot, Dispatcher, types
@@ -50,6 +52,8 @@ class User(Base):
     language: Mapped[str] = mapped_column(String(5), default="uz")
     wallet_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
     loyalty_points: Mapped[int] = mapped_column(Integer, default=0)
+    ai_questions_used: Mapped[int] = mapped_column(Integer, default=0)
+    ai_reset_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     referred_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -167,6 +171,18 @@ async def _ensure_new_columns(conn):
             "ALTER TABLE users ADD COLUMN loyalty_points INTEGER DEFAULT 0"
         ))
         logger.info("Baza yangilandi: users.loyalty_points ustuni qo'shildi")
+
+    if "ai_questions_used" not in existing:
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN ai_questions_used INTEGER DEFAULT 0"
+        ))
+        logger.info("Baza yangilandi: users.ai_questions_used ustuni qo'shildi")
+
+    if "ai_reset_date" not in existing:
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN ai_reset_date VARCHAR(10)"
+        ))
+        logger.info("Baza yangilandi: users.ai_reset_date ustuni qo'shildi")
 
 
 @dp.message(CommandStart())
@@ -577,16 +593,117 @@ async def api_join_squad(request: web.Request) -> web.Response:
 
 
 # ---------------------------------------------------------------------------
+# AI Yordamchi — Anthropic Claude API orqali, real-vaqt veb-qidiruv bilan
+# ---------------------------------------------------------------------------
+
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+AI_DAILY_FREE_LIMIT = 5
+AI_MODEL = "claude-sonnet-4-6"
+
+AI_SYSTEM_PROMPT = (
+    "Siz PayMLBB.ai botining Mobile Legends: Bang Bang bo'yicha AI "
+    "yordamchisiz. Hero'lar, item build, counter-pick, meta-tier va "
+    "so'nggi yangiliklar/patch haqida savollarga javob berasiz. "
+    "Joriy meta yoki yangiliklar so'ralsa, veb-qidiruvdan foydalaning. "
+    "Javoblaringiz o'zbek tilida, qisqa va aniq bo'lsin (3-5 gap atrofida), "
+    "agar savol boshqa tilda yozilgan bo'lsa, o'sha tilda javob bering."
+)
+
+
+async def api_ai_ask(request: web.Request) -> web.Response:
+    if request.method == "OPTIONS":
+        return web.Response()
+
+    if not ANTHROPIC_API_KEY:
+        return web.json_response({"error": "ai_not_configured"}, status=503)
+
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    parsed = verify_telegram_init_data(init_data)
+    if not parsed:
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    try:
+        user_info = json.loads(parsed.get("user", "{}"))
+        telegram_id = user_info["id"]
+        body = await request.json()
+        question = (body.get("question") or "").strip()
+    except (KeyError, json.JSONDecodeError):
+        return web.json_response({"error": "invalid_request"}, status=400)
+
+    if not question:
+        return web.json_response({"error": "empty_question"}, status=400)
+    if len(question) > 500:
+        return web.json_response({"error": "question_too_long"}, status=400)
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            return web.json_response({"error": "user_not_found"}, status=404)
+
+        if user.ai_reset_date != today:
+            user.ai_questions_used = 0
+            user.ai_reset_date = today
+
+        if user.ai_questions_used >= AI_DAILY_FREE_LIMIT:
+            await session.commit()
+            return web.json_response(
+                {"error": "daily_limit_reached", "limit": AI_DAILY_FREE_LIMIT},
+                status=429,
+            )
+
+        user.ai_questions_used += 1
+        remaining = AI_DAILY_FREE_LIMIT - user.ai_questions_used
+        await session.commit()
+
+    try:
+        async with aiohttp.ClientSession() as client:
+            async with client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": AI_MODEL,
+                    "max_tokens": 700,
+                    "system": AI_SYSTEM_PROMPT,
+                    "messages": [{"role": "user", "content": question}],
+                    "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+                },
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                data = await resp.json()
+                if resp.status != 200:
+                    logger.error(f"Anthropic API xatosi: {resp.status} {data}")
+                    return web.json_response({"error": "ai_request_failed"}, status=502)
+    except Exception:
+        logger.exception("AI so'roviga ulanishda xato")
+        return web.json_response({"error": "ai_request_failed"}, status=502)
+
+    answer_parts = [
+        block.get("text", "") for block in data.get("content", [])
+        if block.get("type") == "text"
+    ]
+    answer = "\n".join(p for p in answer_parts if p).strip()
+    if not answer:
+        answer = "Kechirasiz, javob topilmadi. Boshqacha savol bering."
+
+    return web.json_response({"answer": answer, "remaining_today": remaining})
+
+
+# ---------------------------------------------------------------------------
 # TODO — quyidagilar tashqi ma'lumot/qaror kutmoqda, hali ULANMAGAN:
 #
 # 1. TO'LOV (Payme/Click): merchant ID va maxfiy kalitlar kerak.
 #    Olganingizdan keyin shu yerga /api/payment/webhook qo'shiladi.
 #
-# 2. AI YORDAMCHI: qaysi AI API ishlatishni tanlash kerak (masalan
-#    Anthropic Claude API), va API kalit kerak. Shundan keyin
-#    /api/ai/ask endpoint qo'shiladi.
-#
-# 3. DIAMOND TOP-UP: faqat rasmiy Moonton/distribyutor hamkorligi
+# 2. DIAMOND TOP-UP: faqat rasmiy Moonton/distribyutor hamkorligi
 #    hujjat bilan tasdiqlangandan keyin qurilishi kerak.
 # ---------------------------------------------------------------------------
 
@@ -618,6 +735,8 @@ def create_web_app() -> web.Application:
     app.router.add_route("POST", "/api/squads", api_create_squad)
     app.router.add_route("POST", "/api/squads/{squad_id}/join", api_join_squad)
     app.router.add_route("OPTIONS", "/api/squads/{squad_id}/join", api_join_squad)
+    app.router.add_route("POST", "/api/ai/ask", api_ai_ask)
+    app.router.add_route("OPTIONS", "/api/ai/ask", api_ai_ask)
     return app
 
 
