@@ -125,12 +125,14 @@
 
 <div id="screen-ai" class="screen">
   <h2 data-i18n="ai_title">AI Yordamchi</h2>
-  <div class="chat-bubble chat-bot" data-i18n="ai_greeting">Salom! Hero, build, counter-pick yoki yangiliklar bo'yicha so'rang.</div>
-  <div style="display:flex;gap:8px;align-items:center;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:8px 10px;margin-top:16px;">
-    <input type="text" data-i18n-placeholder="ai_placeholder" placeholder="Savolingizni yozing..." style="flex:1;background:transparent;border:none;color:var(--text);font-size:12px;outline:none;">
-    <span>➤</span>
+  <div id="ai-messages">
+    <div class="chat-bubble chat-bot" data-i18n="ai_greeting">Salom! Hero, build, counter-pick yoki yangiliklar bo'yicha so'rang.</div>
   </div>
-  <p class="empty-state" data-i18n="ai_note">AI hali ulanmagan — 7-bosqichda qo'shiladi</p>
+  <div style="display:flex;gap:8px;align-items:center;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:8px 10px;margin-top:16px;">
+    <input id="ai-input" type="text" data-i18n-placeholder="ai_placeholder" placeholder="Savolingizni yozing..." style="flex:1;background:transparent;border:none;color:var(--text);font-size:12px;outline:none;" onkeydown="if(event.key==='Enter'){sendAiQuestion();}">
+    <span id="ai-send-btn" style="cursor:pointer;" onclick="sendAiQuestion()">➤</span>
+  </div>
+  <p class="empty-state" id="ai-status" data-i18n="ai_note">Kunlik 5 ta bepul savol</p>
 </div>
 
 <div id="screen-tournament" class="screen">
@@ -231,7 +233,11 @@
       no_transactions: "Hali tranzaksiya yo'q",
       ai_greeting: "Salom! Hero, build, counter-pick yoki yangiliklar bo'yicha so'rang.",
       ai_placeholder: "Savolingizni yozing...",
-      ai_note: "AI hali ulanmagan — 7-bosqichda qo'shiladi",
+      ai_note: "Kunlik 5 ta bepul savol",
+      ai_thinking: "O'ylanmoqda...",
+      ai_limit_reached: "Bugungi bepul savollar tugadi. Ertaga qayta urinib ko'ring.",
+      ai_error: "Xato yuz berdi, qayta urinib ko'ring.",
+      ai_remaining: "Bugun qoldi:",
       no_tournaments: "Hali faol turnir yo'q",
       squad_lane_label: "Liniya",
       squad_lane_all: "Barchasi",
@@ -278,7 +284,11 @@
       no_transactions: "Пока нет транзакций",
       ai_greeting: "Привет! Спросите про героя, билд, контрпик или новости.",
       ai_placeholder: "Напишите вопрос...",
-      ai_note: "ИИ пока не подключён — появится на 7 этапе",
+      ai_note: "5 бесплатных вопросов в день",
+      ai_thinking: "Думаю...",
+      ai_limit_reached: "Бесплатные вопросы на сегодня закончились. Попробуйте завтра.",
+      ai_error: "Произошла ошибка, попробуйте снова.",
+      ai_remaining: "Осталось сегодня:",
       no_tournaments: "Пока нет активных турниров",
       squad_lane_label: "Линия",
       squad_lane_all: "Все",
@@ -325,7 +335,11 @@
       no_transactions: "No transactions yet",
       ai_greeting: "Hi! Ask about a hero, build, counter-pick, or the latest news.",
       ai_placeholder: "Type your question...",
-      ai_note: "AI isn't connected yet — coming in Stage 7",
+      ai_note: "5 free questions per day",
+      ai_thinking: "Thinking...",
+      ai_limit_reached: "You've used today's free questions. Try again tomorrow.",
+      ai_error: "Something went wrong, please try again.",
+      ai_remaining: "Left today:",
       no_tournaments: "No active tournaments yet",
       squad_lane_label: "Lane",
       squad_lane_all: "All",
@@ -635,6 +649,62 @@
 
   setLanguage(currentLang);
   setCurrency(currentCurrency);
+  // ---------- AI Yordamchi ----------
+  function sendAiQuestion() {
+    var input = document.getElementById('ai-input');
+    var question = input.value.trim();
+    if (!question || !tg || !tg.initData) return;
+
+    var messages = document.getElementById('ai-messages');
+    var statusEl = document.getElementById('ai-status');
+
+    var userBubble = document.createElement('div');
+    userBubble.className = 'chat-bubble';
+    userBubble.style.cssText = 'background:var(--gradient);color:white;border-radius:12px 12px 4px 12px;margin-left:auto;';
+    userBubble.textContent = question;
+    messages.appendChild(userBubble);
+
+    input.value = '';
+    statusEl.textContent = translations[currentLang].ai_thinking || 'Thinking...';
+
+    fetch(API_BASE + '/api/ai/ask', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Telegram-Init-Data': tg.initData
+      },
+      body: JSON.stringify({ question: question })
+    })
+      .then(function (res) { return res.json().then(function (data) { return { status: res.status, data: data }; }); })
+      .then(function (result) {
+        var botBubble = document.createElement('div');
+        botBubble.className = 'chat-bubble chat-bot';
+
+        if (result.status === 429) {
+          botBubble.textContent = translations[currentLang].ai_limit_reached || 'Daily limit reached.';
+          statusEl.textContent = translations[currentLang].ai_limit_reached || '';
+        } else if (result.status !== 200) {
+          botBubble.textContent = translations[currentLang].ai_error || 'Error, try again.';
+          statusEl.textContent = translations[currentLang].ai_note || '';
+        } else {
+          botBubble.textContent = result.data.answer;
+          var label = translations[currentLang].ai_remaining || 'Left today:';
+          statusEl.textContent = label + ' ' + result.data.remaining_today;
+        }
+
+        messages.appendChild(botBubble);
+        messages.scrollTop = messages.scrollHeight;
+      })
+      .catch(function (err) {
+        console.log('AI so\'rovida xatolik:', err);
+        var errBubble = document.createElement('div');
+        errBubble.className = 'chat-bubble chat-bot';
+        errBubble.textContent = translations[currentLang].ai_error || 'Error, try again.';
+        messages.appendChild(errBubble);
+        statusEl.textContent = translations[currentLang].ai_note || '';
+      });
+  }
+
   loadProfile();
   loadReferral();
   loadTournaments();
